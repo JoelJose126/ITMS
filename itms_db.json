@@ -1,0 +1,49 @@
+{
+  "users": [
+    {
+      "email": "user1@example.com",
+      "name": "John Doe",
+      "phone": "+1-555-0101",
+      "history": ["ORD-1001", "ORD-1005"]
+    },
+    {
+      "email": "biz@corp.com",
+      "name": "Jane Smith",
+      "phone": "+1-555-0202",
+      "history": ["ORD-2002"]
+    }
+  ],
+  "orders": [
+    {
+      "id": "ORD-1001",
+      "owner": "user1@example.com",
+      "status": "Delivered",
+      "items": ["Wireless Headphones", "Hard Case"],
+      "eta": "Delivered on 2026-06-01",
+      "refund_eligible": false,
+      "date": "2026-05-25"
+    },
+    {
+      "id": "ORD-1005",
+      "owner": "user1@example.com",
+      "status": "Not Packed",
+      "items": ["Mechanical Keyboard"],
+      "eta": "2026-06-12",
+      "refund_eligible": true,
+      "date": "2026-06-08"
+    },
+    {
+      "id": "ORD-2002",
+      "owner": "biz@corp.com",
+      "status": "Shipped",
+      "items": ["Ergonomic Mouse", "Monitor Stand"],
+      "eta": "2026-06-11",
+      "refund_eligible": true,
+      "date": "2026-06-05"
+    }
+  ],
+  "tickets": [],
+  "config": {
+    "next_ticket_id": 1000
+  }
+}

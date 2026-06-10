@@ -1,0 +1,98 @@
+{
+  "APPLY_FOR_REFUND": [
+    "Ticket Creation: Immediately create a new ITMS ticket. Assign Type: Refund and SubType: Pending Validation. Provide the Ticket_ID to the user.",
+    "Data Verification: Ensure the user has provided an Order ID. If missing, prompt the user for it. Log interaction as an internal ticket comment.",
+    "DB Lookup (Order Validation): Query the ITMS database using the Order ID. If order does not exist or refund already applied/pending, output autonomous rejection, mark ticket CLOSED, and end workflow.",
+    "Data Gathering (Reason): Ask the user to provide the exact reason for the refund request. Update ticket SubType based on reason.",
+    "Policy Lookup: Retrieve the specific 'Refund Policy' from the Knowledge Base based on the user's reason. Log policy retrieved as an internal comment.",
+    "Policy Execution & Branching: Calculate the days since the purchase date against the retrieved policy.",
+    "Branch A (Strict Policy Limit - Autonomous Approval): If within short window: Process refund autonomously via DB query. Calculate ETA. Inform user. Log 'Refund Processed' as internal comment. Mark ticket CLOSED.",
+    "Branch B (Extended Window - Human Approval): If past short window but within extended limit: Ask user to upload supporting evidence. Update ticket with evidence. Log 'Awaiting Human Audit'. Change status to PENDING_APPROVAL.",
+    "Branch C (Policy Violation - Autonomous Rejection): If entirely outside policy limits: Output autonomous rejection citing policy. Log 'Policy Violation - Rejected' as internal comment. Mark ticket CLOSED."
+  ],
+  "CANCEL_ORDER": [
+    "Ticket Creation: Immediately create a new ITMS ticket. Assign Type: Cancellation. Provide the Ticket_ID to the user.",
+    "Data Verification: Ensure the user has provided an Order ID. If missing, prompt the user for it. Log interaction as an internal ticket comment.",
+    "DB Lookup (Order Validation): Query the ITMS database using the Order ID. If order does not exist or is already cancelled, output autonomous rejection, mark ticket CLOSED, and end workflow.",
+    "Data Gathering (Reason): Ask the user to provide the exact reason for the cancellation request. Update ticket SubType based on reason.",
+    "Policy & Status Lookup: Retrieve the specific 'Cancellation Policy' from the KB and check current fulfillment Status. Log status retrieved as an internal comment.",
+    "Status Execution & Branching:",
+    "Branch A (Not Packed - Autonomous Processing): If 'Not Packed': Process cancellation autonomously via DB query. Apply fees. Trigger refund. Inform user. Log 'Cancellation Processed'. Mark ticket CLOSED.",
+    "Branch B (Packed - Human Approval): If 'Packed': Agent drafts cancellation request and flags order to halt shipping. Log 'Halt Shipping Requested'. Change ticket status to PENDING_APPROVAL. Inform user of interception attempt.",
+    "Branch C (Shipped - Autonomous Rejection): If 'Shipped': Output autonomous rejection informing user it is too late. Provide return link. Log 'Rejected - Shipped'. Mark ticket CLOSED."
+  ],
+  "TRACK_ORDER": [
+    "Data Verification: Ensure the user has provided an Order ID. If missing, prompt the user for it.",
+    "DB Lookup: Query the ITMS database using the Order ID. If order does not exist, output autonomous rejection (e.g., 'I cannot locate an order matching that ID.') and end workflow.",
+    "Data Extraction: Retrieve Status, ETA, Courier, and Item_List.",
+    "Response Generation: Format the response clearly for the user, providing all retrieved details in a friendly tone.",
+    "Proactive Check: Ask if the user needs to modify this order.",
+    "Session Logging: Autonomously write a quiet log to the backend User History (e.g., 'User tracked ORD-123 at [Time]'). Do not create an ITMS ticket."
+  ],
+  "LODGE_COMPLAINT": [
+    "Ticket Creation: Immediately create a new ITMS ticket. Assign Type: Complaint and SubType: Uncategorized. Provide the Ticket_ID to the user.",
+    "Empathy Trigger: Output an apologetic statement. Log 'Empathy Triggered' as internal comment.",
+    "Detail Gathering: Ask the user to describe the issue in deep detail and request relevant evidence. Wait for response. Update ticket SubType based on provided details.",
+    "Context Building (Tool Call): Query the database to retrieve the user's past 3 interactions. Log 'History Retrieved' as internal comment.",
+    "Handoff Prep: Generate an internal, structured summary containing the grievance, the attached evidence, and user history. Post this as an internal comment on the ticket.",
+    "Escalation: Change ticket status to PENDING_HUMAN.",
+    "User Communication: Inform the user that their detailed case file has been handed directly to a senior specialist. Leave ticket OPEN."
+  ],
+  "CHANGE_DELIVERY_ADDRESS": [
+    "Ticket Creation: Create a new ITMS ticket. Assign Type: Shipping and SubType: Address Change. Provide the Ticket_ID to the user.",
+    "Data Verification: Ensure Order ID and new Address are provided. If missing, prompt user. Log to ticket.",
+    "DB Lookup (Validation): Query ITMS database for Order ID. If not found, autonomous rejection and close ticket.",
+    "Policy & Status Lookup: Check current fulfillment Status and retrieve Address Change policy.",
+    "Execution & Branching:",
+    "Branch A (Not Packed/Packed): Autonomously update DB with new address. Log 'Address Updated'. Mark ticket CLOSED.",
+    "Branch B (Shipped - Standard): Autonomous rejection. Inform user it's too late. Provide carrier tracking link for direct intercept attempt. Log 'Rejected-Shipped'. Mark CLOSED.",
+    "Branch C (Shipped - VIP/High Value): Escalate to Human Agent (PENDING_HUMAN) for manual carrier intercept attempt. Log 'Escalated - Reroute Attempt'."
+  ],
+  "ISSUE_ADDRESSAL": [
+    "Ticket Creation: Create ITMS ticket. Assign Type: Technical or Billing based on initial query. Provide Ticket_ID.",
+    "Data Gathering: Ask user for specific error codes, device info, or transaction step that failed.",
+    "Diagnosis (Tool Call): Cross-reference gathered error against Internal Troubleshooting KB.",
+    "Execution & Branching:",
+    "Branch A (Payment Failed - Declined): Autonomously inform user of bank decline. Send secure link to update payment method. Wait for confirmation. Mark CLOSED if successful.",
+    "Branch B (App Login - Password Error): Autonomously trigger 'Recover Password' workflow sub-routine.",
+    "Branch C (Unknown Error / Fix Failed): Ask user for screenshot/OS details. Escalate to IT/Billing Support (PENDING_HUMAN). Log 'Troubleshooting Exhausted'."
+  ],
+  "CONTACT_HUMAN_AGENT": [
+    "Ticket Creation: Immediately create a new ITMS ticket. Assign Type: Support and SubType: Direct Handoff. Provide the Ticket_ID to the user.",
+    "Acknowledge & Intercept: Autonomously acknowledge the request (e.g., 'I can certainly connect you with a specialist.') and ask for a 1-sentence summary of the issue to ensure proper routing. Log to ticket.",
+    "Data Gathering (Context): Wait for user response.",
+    "Routing Execution & Branching:",
+    "Branch A (Context Provided): Analyze the summary. Route ticket to specific queue (e.g., Billing_Queue, Tech_Support_Queue). Update status to PENDING_HUMAN. Log 'Routed to [Queue]'.",
+    "Branch B (Refusal/Vague): If the user says 'just get me a human' or provides no useful context, route to the General_Queue. Update status to PENDING_HUMAN. Log 'Routed to General (No Context)'.",
+    "User Communication: Inform the user of the estimated wait time for the selected queue."
+  ],
+  "ORDER_DETAILS_HISTORY": [
+    "Security Gate (Pre-Ticket Validation): Ensure the session is authenticated OR ask for the email/phone number associated with the account.",
+    "DB Lookup: Query ITMS Database matching the provided credentials. If credentials invalid/not found, output autonomous rejection and end workflow.",
+    "Identify Request Type: Determine if user wants a specific invoice (requires Order ID) or a general history.",
+    "Execution & Branching:",
+    "Branch A (Specific Invoice): If Order ID provided, verify Order ID belongs to the authenticated user. If yes, generate and send secure link to invoice. If no, autonomous rejection.",
+    "Branch B (Order History): Retrieve the last 5 orders for the authenticated user. Format into a clear list (Date, Items, Status).",
+    "Session Logging: Autonomously write a quiet log to the backend User History. Do not create an ITMS ticket."
+  ],
+  "CHANGE_ORDER": [
+    "Data Verification: Ensure the user has provided the Order ID and the specific Product Name/ID they wish to add, remove, or swap.",
+    "DB Lookup (Order Validation): Query ITMS database. If Order ID is invalid, autonomous rejection. (No ticket created).",
+    "Ticket Creation: Once validated, create a new ITMS ticket. Assign Type: Order Modification. Provide Ticket_ID.",
+    "Policy & Status Lookup: Check fulfillment Status. If Status == 'Shipped': Autonomous Rejection. Mark ticket CLOSED.",
+    "Inventory & Pricing Check (If Not Shipped): Query product DB for the requested new item(s). If Item is Out of Stock, inform user product is unavailable and ask for alternatives. If Item is Available, calculate price difference.",
+    "Execution & Branching (Based on Price & Status):",
+    "Branch A (Price is Higher - Not Packed): Add item to DB. Generate and send secure payment link for the balance difference. Wait for payment confirmation. Log 'Payment Pending'.",
+    "Branch B (Price is Lower - Not Packed): Add item to DB. Inform user that the partial refund for the price difference will be initiated automatically post-delivery. Log 'Partial Refund Scheduled'.",
+    "Branch C (Status == 'Packed'): Draft the proposed cart changes and price differences. Flag order to halt shipping. Escalate to Human Agent (PENDING_APPROVAL) to manually unpack and approve the change.",
+    "Closure: Mark ticket CLOSED (unless pending human approval)."
+  ],
+  "ACCOUNT_MANAGEMENT": [
+    "Security Gate: Verify the user is authenticated in the current session. If not, prompt for login credentials.",
+    "Identify Request Type: Determine if the modification is for 'Basic Info' (Name, Phone) or 'Sensitive Info' (Email, Password, Account Deletion).",
+    "Execution & Branching:",
+    "Branch A (Basic Info): Autonomously execute the DB update for the provided fields. Confirm the change to the user immediately.",
+    "Branch B (Sensitive Info): Do NOT execute the change via chat interface. Trigger the backend system to send a secure, time-sensitive verification link to the user's verified email address. Instruct the user to check their inbox.",
+    "Session Logging: Autonomously write a quiet log to the backend User History. Do not create an ITMS ticket."
+  ]
+}

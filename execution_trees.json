@@ -1,0 +1,499 @@
+{
+  "APPLY_FOR_REFUND": {
+    "execution_tier": 2,
+    "requires_ticket": true,
+    "dependencies": ["Order_ID", "Refund_Reason", "Evidence_Docs"],
+    "execution_tree": [
+      {
+        "step": 1,
+        "action": "CREATE_TICKET",
+        "type": "Refund",
+        "sub_type": "Pending Validation",
+        "notify_user": true
+      },
+      {
+        "step": 2,
+        "action": "CHECK_DEPENDENCY",
+        "target": "Order_ID",
+        "on_fail": {"mode": "CLARIFY", "prompt": "Please provide your Order ID.", "log_to_ticket": true}
+      },
+      {
+        "step": 3,
+        "action": "TOOL_CALL",
+        "target": "DB_Query_Order",
+        "args": ["Order_ID"],
+        "on_fail": {"mode": "REJECT", "prompt": "Order not found.", "close_ticket": true}
+      },
+      {
+        "step": 4,
+        "action": "EVALUATE_STATE",
+        "target": "Refund_Status",
+        "condition": "ALREADY_APPLIED",
+        "on_true": {"mode": "REJECT", "prompt": "Refund already in progress.", "close_ticket": true}
+      },
+      {
+        "step": 5,
+        "action": "CHECK_DEPENDENCY",
+        "target": "Refund_Reason",
+        "on_fail": {"mode": "CLARIFY", "prompt": "What is the reason for this refund?", "log_to_ticket": true}
+      },
+      {
+        "step": 6,
+        "action": "TOOL_CALL",
+        "target": "Retrieve_Policy",
+        "args": ["Refund_Reason"],
+        "log_to_ticket": true
+      },
+      {
+        "step": 7,
+        "action": "POLICY_EVALUATION",
+        "target": "Refund_Policy",
+        "logic": [
+          {
+            "condition": "Days_Since_Purchase <= Policy.Strict_Limit",
+            "execute": {"mode": "AUTONOMOUS", "action": "Process_Refund_DB", "log": "Processed", "close_ticket": true}
+          },
+          {
+            "condition": "Days_Since_Purchase <= Policy.Extended_Limit",
+            "execute": {"mode": "HUMAN_VERIFIED", "action": "Gather_Evidence", "status": "PENDING_APPROVAL", "log": "Awaiting Audit"}
+          },
+          {
+            "condition": "Days_Since_Purchase > Policy.Extended_Limit",
+            "execute": {"mode": "REJECT", "action": "Notify_Policy_Violation", "log": "Rejected", "close_ticket": true}
+          }
+        ]
+      }
+    ]
+  },
+  "CANCEL_ORDER": {
+    "execution_tier": 2,
+    "requires_ticket": true,
+    "dependencies": ["Order_ID", "Cancel_Reason"],
+    "execution_tree": [
+      {
+        "step": 1,
+        "action": "CREATE_TICKET",
+        "type": "Cancellation",
+        "notify_user": true
+      },
+      {
+        "step": 2,
+        "action": "CHECK_DEPENDENCY",
+        "target": "Order_ID",
+        "on_fail": {"mode": "CLARIFY", "prompt": "Please provide your Order ID.", "log_to_ticket": true}
+      },
+      {
+        "step": 3,
+        "action": "TOOL_CALL",
+        "target": "DB_Query_Order",
+        "args": ["Order_ID"],
+        "on_fail": {"mode": "REJECT", "prompt": "Order not found.", "close_ticket": true}
+      },
+      {
+        "step": 4,
+        "action": "EVALUATE_STATE",
+        "target": "Order_Status",
+        "condition": "CANCELLED",
+        "on_true": {"mode": "REJECT", "prompt": "Order already cancelled.", "close_ticket": true}
+      },
+      {
+        "step": 5,
+        "action": "CHECK_DEPENDENCY",
+        "target": "Cancel_Reason",
+        "on_fail": {"mode": "CLARIFY", "prompt": "What is the reason for cancellation?", "log_to_ticket": true}
+      },
+      {
+        "step": 6,
+        "action": "TOOL_CALL",
+        "target": "Retrieve_Policy",
+        "args": ["Cancel_Policy"],
+        "log_to_ticket": true
+      },
+      {
+        "step": 7,
+        "action": "STATE_EVALUATION",
+        "target": "Fulfillment_Status",
+        "logic": [
+          {
+            "condition": "Status == 'Not Packed'",
+            "execute": {"mode": "AUTONOMOUS", "action": "Process_Cancellation", "log": "Cancelled", "close_ticket": true}
+          },
+          {
+            "condition": "Status == 'Packed'",
+            "execute": {"mode": "HUMAN_VERIFIED", "action": "Halt_Shipping", "status": "PENDING_APPROVAL", "log": "Halt Requested"}
+          },
+          {
+            "condition": "Status == 'Shipped'",
+            "execute": {"mode": "REJECT", "action": "Provide_Return_Link", "log": "Rejected-Shipped", "close_ticket": true}
+          }
+        ]
+      }
+    ]
+  },
+  "TRACK_ORDER": {
+    "execution_tier": 1,
+    "requires_ticket": false,
+    "dependencies": ["Order_ID"],
+    "execution_tree": [
+      {
+        "step": 1,
+        "action": "CHECK_DEPENDENCY",
+        "target": "Order_ID",
+        "on_fail": {"mode": "CLARIFY", "prompt": "Please provide your Order ID to track your shipment."}
+      },
+      {
+        "step": 2,
+        "action": "TOOL_CALL",
+        "target": "DB_Query_Order",
+        "args": ["Order_ID"],
+        "on_fail": {"mode": "REJECT", "prompt": "I could not locate that Order ID."}
+      },
+      {
+        "step": 3,
+        "action": "EXTRACT_DATA",
+        "fields": ["Status", "ETA", "Courier", "Item_List"]
+      },
+      {
+        "step": 4,
+        "action": "GENERATE_RESPONSE",
+        "content_required": ["Status", "ETA", "Courier", "Item_List", "Proactive_Modification_Offer"]
+      },
+      {
+        "step": 5,
+        "action": "SESSION_LOG",
+        "event": "Order Tracked",
+        "target": "User_History"
+      }
+    ]
+  },
+  "LODGE_COMPLAINT": {
+    "execution_tier": 2,
+    "requires_ticket": true,
+    "dependencies": ["Detailed_Grievance", "Supporting_Docs"],
+    "execution_tree": [
+      {
+        "step": 1,
+        "action": "CREATE_TICKET",
+        "type": "Complaint",
+        "sub_type": "Uncategorized",
+        "notify_user": true
+      },
+      {
+        "step": 2,
+        "action": "GENERATE_RESPONSE",
+        "empathy_directive": "Highly apologetic.",
+        "content_required": ["Empathy_Statement"],
+        "log_to_ticket": true
+      },
+      {
+        "step": 3,
+        "action": "CHECK_DEPENDENCY",
+        "target": ["Detailed_Grievance", "Supporting_Docs"],
+        "on_fail": {"mode": "CLARIFY", "prompt": "Please provide a detailed description of the issue.", "log_to_ticket": true}
+      },
+      {
+        "step": 4,
+        "action": "TOOL_CALL",
+        "target": "DB_Query_User_History",
+        "args": ["User_ID"],
+        "limit": 3,
+        "log_to_ticket": true
+      },
+      {
+        "step": 5,
+        "action": "GENERATE_INTERNAL_SUMMARY",
+        "format": "[Grievance] + [Evidence_List] + [History_Note]",
+        "post_to_ticket": true
+      },
+      {
+        "step": 6,
+        "action": "UPDATE_TICKET",
+        "status": "PENDING_HUMAN"
+      },
+      {
+        "step": 7,
+        "action": "GENERATE_RESPONSE",
+        "content_required": ["Escalation_Confirmation", "ETA_Expectation"]
+      }
+    ]
+  },
+  "CHANGE_DELIVERY_ADDRESS": {
+    "execution_tier": 2,
+    "requires_ticket": true,
+    "dependencies": ["Order_ID", "New_Address"],
+    "execution_tree": [
+      {
+        "step": 1,
+        "action": "CREATE_TICKET",
+        "type": "Shipping",
+        "sub_type": "Address Change",
+        "notify_user": true
+      },
+      {
+        "step": 2,
+        "action": "CHECK_DEPENDENCY",
+        "target": ["Order_ID", "New_Address"],
+        "on_fail": {"mode": "CLARIFY", "prompt": "Please provide your Order ID and the new complete delivery address.", "log_to_ticket": true}
+      },
+      {
+        "step": 3,
+        "action": "TOOL_CALL",
+        "target": "DB_Query_Order",
+        "args": ["Order_ID"],
+        "on_fail": {"mode": "REJECT", "prompt": "Order not found.", "close_ticket": true}
+      },
+      {
+        "step": 4,
+        "action": "STATE_EVALUATION",
+        "target": ["Fulfillment_Status", "User_Tier"],
+        "logic": [
+          {
+            "condition": "Status IN ['Not Packed', 'Packed']",
+            "execute": {"mode": "AUTONOMOUS", "action": "Update_Address_DB", "log": "Address Updated", "close_ticket": true}
+          },
+          {
+            "condition": "(Status == 'Shipped') AND (User_Tier != 'VIP')",
+            "execute": {"mode": "REJECT", "action": "Provide_Carrier_Link", "log": "Rejected-Shipped", "close_ticket": true}
+          },
+          {
+            "condition": "(Status == 'Shipped') AND (User_Tier == 'VIP')",
+            "execute": {"mode": "HUMAN_VERIFIED", "action": "Flag_For_Reroute", "status": "PENDING_HUMAN", "log": "Escalated Reroute"}
+          }
+        ]
+      }
+    ]
+  },
+  "ISSUE_ADDRESSAL": {
+    "execution_tier": 2,
+    "requires_ticket": true,
+    "dependencies": ["Error_Description"],
+    "execution_tree": [
+      {
+        "step": 1,
+        "action": "CREATE_TICKET",
+        "type": "Support",
+        "sub_type": "Troubleshooting",
+        "notify_user": true
+      },
+      {
+        "step": 2,
+        "action": "CHECK_DEPENDENCY",
+        "target": "Error_Description",
+        "on_fail": {"mode": "CLARIFY", "prompt": "Could you provide any error codes or detail exactly what went wrong?", "log_to_ticket": true}
+      },
+      {
+        "step": 3,
+        "action": "TOOL_CALL",
+        "target": "Query_Troubleshooting_KB",
+        "args": ["Error_Description"]
+      },
+      {
+        "step": 4,
+        "action": "DIAGNOSTIC_EVALUATION",
+        "target": "KB_Resolution",
+        "logic": [
+          {
+            "condition": "Error_Type == 'Card_Declined'",
+            "execute": {"mode": "AUTONOMOUS", "action": "Send_Payment_Update_Link", "log": "Payment Link Sent", "close_ticket": false}
+          },
+          {
+            "condition": "Error_Type == 'Auth_Failure'",
+            "execute": {"mode": "AUTONOMOUS", "action": "Trigger_Password_Reset", "log": "Reset Triggered", "close_ticket": false}
+          },
+          {
+            "condition": "Error_Type == 'Unknown' OR Previous_Fix_Failed == True",
+            "execute": {"mode": "HUMAN_VERIFIED", "action": "Request_Screenshot", "status": "PENDING_HUMAN", "log": "Escalated Tech Support"}
+          }
+        ]
+      }
+    ]
+  },
+  "CONTACT_HUMAN_AGENT": {
+    "execution_tier": 2,
+    "requires_ticket": true,
+    "dependencies": ["Handoff_Context"],
+    "execution_tree": [
+      {
+        "step": 1,
+        "action": "CREATE_TICKET",
+        "type": "Support",
+        "sub_type": "Direct Handoff",
+        "notify_user": true
+      },
+      {
+        "step": 2,
+        "action": "CHECK_DEPENDENCY",
+        "target": "Handoff_Context",
+        "on_fail": {"mode": "CLARIFY", "prompt": "I will connect you right away. To get you to the correct department, could you briefly tell me what this is regarding?", "log_to_ticket": true}
+      },
+      {
+        "step": 3,
+        "action": "EVALUATE_CONTEXT",
+        "target": "Handoff_Context",
+        "logic": [
+          {
+            "condition": "Topic == 'Billing'",
+            "execute": {"mode": "HUMAN_ASSIST", "action": "Route_To_Queue", "queue": "Billing_Queue", "status": "PENDING_HUMAN", "log": "Routed: Billing"}
+          },
+          {
+            "condition": "Topic == 'Technical'",
+            "execute": {"mode": "HUMAN_ASSIST", "action": "Route_To_Queue", "queue": "Tech_Support_Queue", "status": "PENDING_HUMAN", "log": "Routed: Tech"}
+          },
+          {
+            "condition": "Topic == 'Unknown' OR Refusal == True",
+            "execute": {"mode": "HUMAN_ASSIST", "action": "Route_To_Queue", "queue": "General_Queue", "status": "PENDING_HUMAN", "log": "Routed: General"}
+          }
+        ]
+      },
+      {
+        "step": 4,
+        "action": "GENERATE_RESPONSE",
+        "content_required": ["Queue_Confirmation", "ETA_Expectation"]
+      }
+    ]
+  },
+  "ORDER_DETAILS_HISTORY": {
+    "execution_tier": 1,
+    "requires_ticket": false,
+    "dependencies": ["Authentication_Credentials", "Request_Type"],
+    "execution_tree": [
+      {
+        "step": 1,
+        "action": "CHECK_DEPENDENCY",
+        "target": "Authentication_Credentials",
+        "on_fail": {"mode": "CLARIFY", "prompt": "For security purposes, please provide the email address or phone number associated with your account."}
+      },
+      {
+        "step": 2,
+        "action": "TOOL_CALL",
+        "target": "DB_Verify_User",
+        "args": ["Authentication_Credentials"],
+        "on_fail": {"mode": "REJECT", "prompt": "I cannot verify an account with those details."}
+      },
+      {
+        "step": 3,
+        "action": "STATE_EVALUATION",
+        "target": "Request_Type",
+        "logic": [
+          {
+            "condition": "Type == 'Specific_Invoice'",
+            "execute": {"mode": "AUTONOMOUS", "action": "Generate_Invoice_Link", "args": ["Order_ID"]}
+          },
+          {
+            "condition": "Type == 'Order_History'",
+            "execute": {"mode": "AUTONOMOUS", "action": "Retrieve_Order_History", "limit": 5}
+          }
+        ]
+      },
+      {
+        "step": 4,
+        "action": "GENERATE_RESPONSE",
+        "content_required": ["Requested_Data", "Security_Reminder"]
+      },
+      {
+        "step": 5,
+        "action": "SESSION_LOG",
+        "event": "Order Data Accessed",
+        "target": "User_History"
+      }
+    ]
+  },
+  "CHANGE_ORDER": {
+    "execution_tier": 2,
+    "requires_ticket": true,
+    "dependencies": ["Order_ID", "Product_ID", "Modification_Action"],
+    "execution_tree": [
+      {
+        "step": 1,
+        "action": "CHECK_DEPENDENCY",
+        "target": ["Order_ID", "Product_ID"],
+        "on_fail": {"mode": "CLARIFY", "prompt": "Please provide your Order ID and the specific item you want to change.", "log_to_ticket": true}
+      },
+      {
+        "step": 2,
+        "action": "TOOL_CALL",
+        "target": "DB_Query_Order",
+        "args": ["Order_ID"],
+        "on_fail": {"mode": "REJECT", "prompt": "Order not found.", "close_ticket": false}
+      },
+      {
+        "step": 3,
+        "action": "CREATE_TICKET",
+        "type": "Order Modification",
+        "notify_user": true
+      },
+      {
+        "step": 4,
+        "action": "EVALUATE_STATE",
+        "target": "Fulfillment_Status",
+        "condition": "SHIPPED",
+        "on_true": {"mode": "REJECT", "prompt": "Order has already shipped and cannot be modified.", "close_ticket": true}
+      },
+      {
+        "step": 5,
+        "action": "TOOL_CALL",
+        "target": "DB_Query_Inventory",
+        "args": ["Product_ID"],
+        "on_fail": {"mode": "CLARIFY", "prompt": "That item is currently out of stock. Would you like to choose a different item?", "log_to_ticket": true}
+      },
+      {
+        "step": 6,
+        "action": "STATE_EVALUATION",
+        "target": ["Fulfillment_Status", "Price_Difference"],
+        "logic": [
+          {
+            "condition": "(Status == 'Not Packed') AND (Price_Diff > 0)",
+            "execute": {"mode": "AUTONOMOUS", "action": "Send_Payment_Link", "log": "Awaiting Balance Payment", "close_ticket": false}
+          },
+          {
+            "condition": "(Status == 'Not Packed') AND (Price_Diff <= 0)",
+            "execute": {"mode": "AUTONOMOUS", "action": "Schedule_Post_Delivery_Refund", "log": "Cart Updated; Post-Delivery Refund Set", "close_ticket": true}
+          },
+          {
+            "condition": "Status == 'Packed'",
+            "execute": {"mode": "HUMAN_VERIFIED", "action": "Halt_Shipping", "status": "PENDING_APPROVAL", "log": "Escalated for Manual Unpack"}
+          }
+        ]
+      }
+    ]
+  },
+  "ACCOUNT_MANAGEMENT": {
+    "execution_tier": 1,
+    "requires_ticket": false,
+    "dependencies": ["Authentication_Session", "Modification_Target"],
+    "execution_tree": [
+      {
+        "step": 1,
+        "action": "CHECK_DEPENDENCY",
+        "target": "Authentication_Session",
+        "on_fail": {"mode": "REJECT", "prompt": "You must be logged in to modify account settings."}
+      },
+      {
+        "step": 2,
+        "action": "EVALUATE_CONTEXT",
+        "target": "Modification_Target",
+        "logic": [
+          {
+            "condition": "Target IN ['Name', 'Phone', 'Preferences']",
+            "execute": {"mode": "AUTONOMOUS", "action": "Update_User_DB", "args": ["New_Values"]}
+          },
+          {
+            "condition": "Target IN ['Email', 'Password', 'Delete_Account']",
+            "execute": {"mode": "AUTONOMOUS", "action": "Trigger_Secure_Link", "args": ["Target_Type"]}
+          }
+        ]
+      },
+      {
+        "step": 3,
+        "action": "GENERATE_RESPONSE",
+        "content_required": ["Confirmation_Of_Action", "Inbox_Check_Reminder"]
+      },
+      {
+        "step": 4,
+        "action": "SESSION_LOG",
+        "event": "Account Modification Attempted",
+        "target": "User_History"
+      }
+    ]
+  }
+}
